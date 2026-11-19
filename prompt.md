@@ -10,11 +10,12 @@ You are setting up **opencodezen**, a Cloudflare Worker that lets Anthropic-form
 
 - Repo: https://github.com/raphaelmans/opencodezen (fork of `cucoleadan/opencode-cowork-proxy`, MIT).
 - Worker name: `opencodezen` (set in `wrangler.toml`).
+- **Live Worker URL: https://opencodezen.nameless-hill-af77.workers.dev** (deployed 2026-11-19). Use it as `<worker-url>`; a new machine does not need to redeploy.
 - Routes: `<worker-url>/zen` → `https://opencode.ai/zen/v1` (pay-as-you-go Zen models), `<worker-url>/go` → `https://opencode.ai/zen/go/v1` (OpenCode Go subscription).
 - Auth: the client sends its OpenCode API key as `x-api-key`. The Worker stores no key; it forwards it only to opencode.ai.
 - This fork adds what OpenCode Go now requires from third-party clients: a stable `X-Opencode-Session` header (taken from the client's `X-Opencode-Session`, `X-Claude-Code-Session-Id` or `X-Session-Id`) and its own `User-Agent`. Without a session id, Go answers `MissingSessionID`.
 
-## Known limits (verified 2026-11-19)
+## Known limits (verified 2026-11-19 against the live Worker)
 
 - **Free Zen models (`*-free`, `big-pickle`) do not work through this proxy.** OpenCode's docs: free-tier chat models require the OpenCode app; other clients get `FreeUsageLimitError` (429). `minimax-m2.5-free` is retired.
 - **Go models need an active OpenCode Go subscription** (otherwise 403 `permission_error`).
@@ -23,7 +24,7 @@ You are setting up **opencodezen**, a Cloudflare Worker that lets Anthropic-form
 
 ## Steps
 
-1. **Prerequisites.** Confirm Node.js ≥ 20 and git. Ask me whether the Worker is already deployed (it is, if the URL in step 4 answers). If it is, skip to step 5.
+1. **Prerequisites.** Confirm Node.js ≥ 20 and git. Check whether the live Worker answers (`curl https://opencodezen.nameless-hill-af77.workers.dev/`). If it does, skip to step 4; only redeploy if I ask or it is gone.
 2. **Get the code and test it.**
    ```bash
    git clone https://github.com/raphaelmans/opencodezen && cd opencodezen
