@@ -10,7 +10,17 @@ Live Worker: **https://opencodezen.nameless-hill-af77.workers.dev**
 
 ### How it works
 
-`<worker-url>/opencode/*` is a transparent pass-through to `https://opencode.ai/zen/*`. It keeps the request method, body, streaming responses and OpenCode's own headers (`User-Agent`, `x-opencode-*`, auth). It also forwards the real client IP in `X-Forwarded-For` / `X-Real-IP`. No format translation happens, so every endpoint OpenCode uses (`/chat/completions`, `/responses`, `/messages`, `/models`) works.
+`<worker-url>/opencode/*` is a transparent pass-through to OpenCode's inference endpoints. It keeps the request method, body, streaming responses and OpenCode's own headers (`User-Agent`, `x-opencode-*`, auth). It also forwards the real client IP in `X-Forwarded-For` / `X-Real-IP`. No format translation happens.
+
+OpenCode's catalog gives each model family its own upstream: `opencode.ai/inference/[go/]openai/v1`, `…/anthropic/v1` and `…/google/v1beta`. A provider-wide `baseURL` override sends all of them to one URL, so the Worker picks the family from the request's shape:
+
+| Request path (after `/opencode` or `/opencode/go`) | Upstream |
+|---|---|
+| `/v1/models/<id>:generateContent` or `:streamGenerateContent` (Gemini) | `inference/[go/]google/v1beta/...` |
+| `/v1/messages...` (Claude, Qwen, MiniMax M3) | `inference/[go/]anthropic/v1/...` |
+| any other `/v1/...` (`chat/completions`, `responses`, `models`) | `inference/[go/]openai/v1/...` |
+
+Without this, Gemini returns `Provider request failed with HTTP 404`: the older `zen/v1` path has no Gemini endpoint.
 
 | OpenCode provider | Sign-in in OpenCode 2.x | Base URL through the Worker |
 |-------------------|-------------------------|-----------------------------|
@@ -67,7 +77,8 @@ To use a key other than the stored sign-in, add `"apiKey": "{env:OPENCODE_ZEN_KE
 | OpenCode requests reach the Worker (`/opencode/v1/chat/completions`, `/responses`) with OpenCode's own `User-Agent` | ✅ |
 | Paid Console / Zen models (e.g. `gpt-5.4-nano`) | ✅ 200 |
 | Model lists: `/opencode/v1/models` (Console / Zen), `/opencode/go/v1/models` (Go) | ✅ |
-| Go models in the OpenCode app (`opencode-go` override → `/opencode/go/v1`) | ✅ 200 with an active Go subscription (verified with `qwen3.8-flash`: `/messages` and `/responses` both went through the Worker). Without a subscription: 403 `permission_error`. |
+| Go models in the OpenCode app (`opencode-go` override → `/opencode/go/v1`) | ✅ 200 with an active Go subscription, all three formats: `gemini-4-argon` (Google), `qwen3.8-flash` (Anthropic), `glm-5.3-flash` (OpenAI). Without a subscription: 403 `permission_error`. |
+| Console Gemini (`opencode/gemini-4-argon`) | ✅ 200 |
 | **Free Zen models** (`big-pickle`, `*-free`) | ❌ **Refused when proxied**: `429 Client IP address is required for free usage.` |
 
 **Free models need OpenCode connecting directly.** Zen takes the user's IP from Cloudflare's edge. A Worker's subrequest hides it, and `X-Forwarded-For` is not trusted for free usage. This is intentional on OpenCode's side, so don't try to work around it. To use free models, remove the `baseURL` override.
@@ -378,7 +389,7 @@ This works with all Go and Zen models.
 
 | Path | Method | Purpose |
 |------|--------|---------|
-| `/opencode/*` | any | **opencodezen:** transparent pass-through to `https://opencode.ai/zen/*` for the OpenCode app. |
+| `/opencode/*` | any | **opencodezen:** transparent pass-through to `https://opencode.ai/inference/{openai,anthropic,google}` for the OpenCode app (family picked from the path). |
 | `/v1/messages` | POST | Anthropic Messages API. Translates to OpenAI format by default. |
 | `/v1/chat/completions` | POST | OpenAI Chat Completions API. Pass-through by default. |
 | `/v1/models` | GET | Model discovery proxy. |

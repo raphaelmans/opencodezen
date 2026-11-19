@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { upstreamFor } from '../src/index';
 import worker from '../src/index';
 
 const key = 'a'.repeat(32);
@@ -366,7 +367,7 @@ describe('worker routing', () => {
     });
     const res = await worker.fetch(request);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://opencode.ai/zen/v1/responses?x=1');
+    expect(url).toBe('https://opencode.ai/inference/openai/v1/responses?x=1');
     const h = init.headers as Headers;
     expect(h.get('user-agent')).toBe('opencode/1.18.25');
     expect(h.get('x-opencode-session')).toBe('s1');
@@ -376,5 +377,18 @@ describe('worker routing', () => {
     expect(h.get('x-real-ip')).toBe('1.2.3.4');
     expect(res.headers.get('content-type')).toBe('text/event-stream');
     fetchMock.mockRestore();
+  });
+  it('routes OpenCode requests to the right inference family', () => {
+    expect(upstreamFor('/v1/chat/completions')).toBe('https://opencode.ai/inference/openai/v1/chat/completions');
+    expect(upstreamFor('/v1/responses')).toBe('https://opencode.ai/inference/openai/v1/responses');
+    expect(upstreamFor('/v1/models')).toBe('https://opencode.ai/inference/openai/v1/models');
+    expect(upstreamFor('/v1/messages')).toBe('https://opencode.ai/inference/anthropic/v1/messages');
+    expect(upstreamFor('/v1/messages/count_tokens')).toBe('https://opencode.ai/inference/anthropic/v1/messages/count_tokens');
+    expect(upstreamFor('/v1/models/gemini-4-argon:streamGenerateContent')).toBe('https://opencode.ai/inference/google/v1beta/models/gemini-4-argon:streamGenerateContent');
+    expect(upstreamFor('/go/v1/chat/completions')).toBe('https://opencode.ai/inference/go/openai/v1/chat/completions');
+    expect(upstreamFor('/go/v1/messages')).toBe('https://opencode.ai/inference/go/anthropic/v1/messages');
+    expect(upstreamFor('/go/v1/models/gemini-4-argon:streamGenerateContent')).toBe('https://opencode.ai/inference/go/google/v1beta/models/gemini-4-argon:streamGenerateContent');
+    expect(upstreamFor('/go/v1beta/models/gemini-4-argon:generateContent')).toBe('https://opencode.ai/inference/go/google/v1beta/models/gemini-4-argon:generateContent');
+    expect(upstreamFor('/something')).toBe('https://opencode.ai/zen/something');
   });
 });

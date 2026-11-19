@@ -10,7 +10,7 @@ You are setting up this machine so that **the OpenCode app uses its own provider
 
 - Repo: https://github.com/raphaelmans/opencodezen (fork of `cucoleadan/opencode-cowork-proxy`, MIT).
 - **Live Worker: https://opencodezen.nameless-hill-af77.workers.dev**. It is already deployed, so a new machine does not need to redeploy.
-- `<worker-url>/opencode/*` is a transparent pass-through to `https://opencode.ai/zen/*`. It keeps OpenCode's headers, request formats and streaming, and forwards the real client IP.
+- `<worker-url>/opencode/*` is a transparent pass-through to OpenCode's inference endpoints (`opencode.ai/inference/[go/]{openai,anthropic,google}`). The Worker picks the family from the request path (Gemini `:streamGenerateContent` → google, `/messages` → anthropic, else openai). It keeps OpenCode's headers and streaming, and forwards the real client IP.
 - OpenCode providers and their base URLs through the Worker:
   - `opencode` (Console / Zen models; sign-in **OpenCode Console**): `<worker-url>/opencode/v1`
   - `opencode-go` (Go subscription; sign-in **OpenCode Go**): `<worker-url>/opencode/go/v1`
@@ -21,7 +21,8 @@ You are setting up this machine so that **the OpenCode app uses its own provider
 
 - ✅ OpenCode requests reach the Worker with OpenCode's own `User-Agent`. Paid Console / Zen models (e.g. `gpt-5.4-nano`) return 200.
 - ❌ **Free Zen models (`big-pickle`, `*-free`) are refused when proxied**: `429 Client IP address is required for free usage.` Zen takes the user's IP from Cloudflare's edge, and a Worker hides it. This is intentional; **do not try to work around it.** For free models, remove the `baseURL` override.
-- ✅ Go through the Worker works in the app with an active Go subscription (verified with `opencode-go/qwen3.8-flash`). Without a subscription Go answers 403.
+- ✅ Go through the Worker works in the app with an active Go subscription, in all three API formats (verified: `gemini-4-argon`, `qwen3.8-flash`, `glm-5.3-flash`). Console Gemini works too. Without a subscription Go answers 403.
+- If a model fails with `Provider request failed with HTTP 404`, check the Worker log path: a new API family may need a rule in `upstreamFor` (src/index.ts).
 - OpenCode 2.x keeps loaded config in a background service: after editing config, quit OpenCode fully, or check with `opencode run --standalone -m <model> "…"`.
 - `Reconnect OpenCode Console to continue` means the Console rejected the saved key (often a shortened key copied from the key list). Sign in with the browser option, or paste a freshly created key.
 - "This API key has expired" means: create a new key in the OpenCode Console and run `opencode auth login` again. Signing in again with the old key does not renew it.

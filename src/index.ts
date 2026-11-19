@@ -21,20 +21,43 @@ const HOP_HEADERS = new Set([
   "true-client-ip", "x-upstream-url", "x-upstream-format",
 ]);
 
+const INFERENCE_ORIGIN = "https://opencode.ai/inference";
+
 /**
- * Transparent pass-through for OpenCode itself: <worker>/opencode/<path> is
- * forwarded unchanged to https://opencode.ai/zen/<path>. Method, body,
- * client headers (User-Agent, x-opencode-*, auth) and streaming responses are
- * preserved; no format translation happens. In OpenCode set
- * providers.opencode.settings.baseURL (2.x) / provider.opencode.options.baseURL
- * (1.x) to <worker>/opencode/v1, and the `opencode-go` provider to
+ * Where an OpenCode request goes upstream. OpenCode's catalog (models.dev) gives
+ * each model family its own base: inference/[go/]openai/v1, inference/[go/]anthropic/v1
+ * and inference/[go/]google/v1beta. A provider-wide baseURL override sends every
+ * family to one URL, so the family is recovered from the request's shape:
+ *   .../models/<id>:<method>   -> google  (Gemini generateContent / streamGenerateContent)
+ *   .../messages[...]          -> anthropic
+ *   anything else under /v1    -> openai  (chat/completions, responses, models, ...)
+ * `rest` is the path after the /opencode prefix, e.g. "/go/v1/messages".
+ */
+export function upstreamFor(rest: string): string {
+  const go = rest === "/go" || rest.startsWith("/go/");
+  const base = go ? `${INFERENCE_ORIGIN}/go` : INFERENCE_ORIGIN;
+  const tail = go ? rest.slice(3) : rest; // "/v1/..." or "/v1beta/..."
+  const m = tail.match(/^\/v1(?:beta)?(\/.*)?$/);
+  if (!m) return `${ZEN_ORIGIN}${rest === "/" ? "" : rest}`; // unknown shape: legacy Zen path
+  const sub = m[1] ?? "";
+  if (/^\/models\/[^/]+:[A-Za-z]+$/.test(sub)) return `${base}/google/v1beta${sub}`;
+  if (sub === "/messages" || sub.startsWith("/messages/")) return `${base}/anthropic/v1${sub}`;
+  return `${base}/openai/v1${sub}`;
+}
+
+/**
+ * Transparent pass-through for OpenCode itself: <worker>/opencode/[go/]v1/... is
+ * forwarded unchanged to the matching https://opencode.ai/inference/... base (see
+ * upstreamFor). Method, body, client headers (User-Agent, x-opencode-*, auth) and
+ * streaming responses are preserved; no format translation happens. In OpenCode set
+ * the `opencode` provider baseURL to <worker>/opencode/v1 and `opencode-go` to
  * <worker>/opencode/go/v1.
  */
 export async function passthrough(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
   const rest = stripPrefix(url.pathname, PASSTHROUGH_PREFIX);
   if (rest === null) return null;
-  const target = `${ZEN_ORIGIN}${rest === "/" ? "" : rest}${url.search}`;
+  const target = `${upstreamFor(rest)}${url.search}`;
   const headers = new Headers();
   request.headers.forEach((value, name) => {
     const n = name.toLowerCase();
@@ -257,7 +280,7 @@ async function handleRequest(request: Request): Promise<Response> {
     name: "opencode-cowork-proxy",
     upstream,
     routes: {
-      "/opencode": `${ZEN_ORIGIN} (transparent pass-through for the OpenCode app)`,
+      "/opencode": `${INFERENCE_ORIGIN}/{openai,anthropic,google} (transparent pass-through for the OpenCode app)`,
       "/opencode/v1": "OpenCode `opencode` provider (Console / Zen) baseURL",
       "/opencode/go/v1": "OpenCode `opencode-go` provider baseURL",
       "/go": GO_UPSTREAM,
