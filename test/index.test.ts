@@ -407,10 +407,11 @@ describe('worker routing', () => {
     expect(init.duplex).toBe('half');
     fetchMock.mockRestore();
   });
-  it('keeps /opencode as a temporary alias of /chat', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
-    await worker.fetch(new Request('https://proxy.example/opencode/go/v1/messages', { method: 'POST', headers: { Authorization: 'Bearer k' }, body: '{}' }));
-    expect((fetchMock.mock.calls[0] as [string])[0]).toBe('https://opencode.ai/inference/go/anthropic/v1/messages');
+  it('no longer serves the old /opencode path', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const res = await worker.fetch(new Request('https://proxy.example/opencode/go/v1/messages', { method: 'POST', headers: { Authorization: 'Bearer k' }, body: '{}' }));
+    expect(res.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
     fetchMock.mockRestore();
   });
 

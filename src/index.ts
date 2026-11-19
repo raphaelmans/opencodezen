@@ -14,8 +14,8 @@ const VISION_MODEL = "qwen3.6-plus";
 
 const API_START_PATHS = new Set(['v1', 'v2']);
 const ZEN_ORIGIN = "https://opencode.ai/zen";
-// Public path for the pass-through. "/opencode" is kept only as a temporary alias while clients move over.
-const PASSTHROUGH_PREFIXES = ["/chat", "/opencode"];
+// Public path for the pass-through (provider-neutral on purpose).
+const PASSTHROUGH_PREFIXES = ["/chat"];
 const HOP_HEADERS = new Set([
   "host", "content-length", "connection", "keep-alive", "transfer-encoding",
   "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host", "x-real-ip",

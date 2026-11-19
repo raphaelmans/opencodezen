@@ -9,7 +9,7 @@ You are setting up this machine so that **the OpenCode app uses its own provider
 ## Facts
 
 - Repo: https://github.com/raphaelmans/opencodezen (fork of `cucoleadan/opencode-cowork-proxy`, MIT).
-- **Live Worker: https://api.raphaelmansueto.com**. It is already deployed, so a new machine does not need to redeploy. Public paths are `/chat/v1` and `/chat/go/v1` (the older `/opencode/...` paths are a temporary alias).
+- **Live Worker: https://api.raphaelmansueto.com**. It is already deployed, so a new machine does not need to redeploy. Public paths are `/chat/v1` and `/chat/go/v1`.
 - The domain's DNS is on Cloudflare; the website `raphaelmansueto.com` / `www` runs on Vercel through **DNS only** records. Never proxy or delete those two records.
 - `<worker-url>/chat/*` is a transparent pass-through to OpenCode's inference endpoints (`opencode.ai/inference/[go/]{openai,anthropic,google}`). The Worker picks the family from the request path (Gemini `:streamGenerateContent` → google, `/messages` → anthropic, else openai). It keeps OpenCode's headers and streaming, and forwards the real client IP.
 - OpenCode providers and their base URLs through the Worker:

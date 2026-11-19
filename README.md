@@ -12,7 +12,7 @@ Live Worker: **https://api.raphaelmansueto.com**
 
 - `api.raphaelmansueto.com` is a Workers **custom domain**. The `raphaelmansueto.com` zone's DNS is on Cloudflare (moved from GoDaddy on 2026-11-19). The website itself still runs on Vercel: the apex `A 76.76.21.21` and `www CNAME cname.vercel-dns.com` records are **DNS only** (grey cloud).
 - Public paths are provider-neutral: `/chat/v1` and `/chat/go/v1`. The info page (`GET /`) names no upstream provider.
-- Transitional, to be removed: the old `/opencode/...` paths still work as an alias of `/chat/...`, and the `*.workers.dev` URL is still enabled (`workers_dev = true` in `wrangler.toml`).
+- The old `/opencode/...` paths were removed on 2026-11-19. The `*.workers.dev` URL is still enabled (`workers_dev = true` in `wrangler.toml`) as a fallback while the new domain's IPv6 TLS settles; set it to `false` to retire it.
 - A brand-new custom domain can have slow TLS handshakes (seconds) for a while, until Cloudflare's certificate is fully rolled out. A Mac may also cache "no such host" for its IPv4 address from before activation. Flush the cache with `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`.
 
 ### How it works
