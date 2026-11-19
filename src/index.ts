@@ -61,11 +61,23 @@ function upstreamFormat(request: Request): "openai" | "anthropic" {
   return fmt === "anthropic" ? "anthropic" : "openai";
 }
 
+function sessionHeaders(request: Request): Record<string, string> {
+  // OpenCode Go asks third-party clients to send a stable per-conversation
+  // session id and their own user agent (opencode.ai/docs/console/go).
+  const h: Record<string, string> = { "User-Agent": "opencode-cowork-proxy/2.0" };
+  const sid = request.headers.get("X-Opencode-Session")
+    || request.headers.get("X-Claude-Code-Session-Id")
+    || request.headers.get("X-Session-Id");
+  if (sid) h["X-Opencode-Session"] = sid;
+  return h;
+}
+
 function anthropicHeaders(request: Request, key: string): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-Api-Key": key,
     "Anthropic-Version": request.headers.get("Anthropic-Version") || "2023-06-01",
+    ...sessionHeaders(request),
   };
   const beta = request.headers.get("Anthropic-Beta");
   if (beta) headers["Anthropic-Beta"] = beta;
@@ -113,6 +125,7 @@ async function handleRequest(request: Request): Promise<Response> {
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${key}`,
+            ...sessionHeaders(request),
           },
           body: JSON.stringify(openaiReq),
         });
@@ -168,7 +181,7 @@ async function handleRequest(request: Request): Promise<Response> {
       // Pass-through to OpenAI upstream
       const res = await fetch(`${upstream}/chat/completions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}`, ...sessionHeaders(request) },
         body: await request.text(),
       });
       return res;
@@ -187,7 +200,7 @@ async function handleRequest(request: Request): Promise<Response> {
           })
         : await fetch(`${upstream}/models`, {
             method: "GET",
-            headers: { "Authorization": `Bearer ${key}` },
+            headers: { "Authorization": `Bearer ${key}`, ...sessionHeaders(request) },
       });
       if (!res.ok) return upstreamErrorResponse(res, await res.text());
       return new Response(await res.text(), { headers: { "Content-Type": "application/json" } });

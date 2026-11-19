@@ -32,6 +32,7 @@ describe('worker routing', () => {
         'X-Api-Key': key,
         'Anthropic-Version': '2023-06-01',
         'Anthropic-Beta': 'tools-2024-04-04',
+        'User-Agent': 'opencode-cowork-proxy/2.0',
       },
     });
   });
@@ -151,7 +152,7 @@ describe('worker routing', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('https://opencode.ai/zen/go/v1/models', {
       method: 'GET',
-      headers: { Authorization: `Bearer ${key}` },
+      headers: { Authorization: `Bearer ${key}`, 'User-Agent': 'opencode-cowork-proxy/2.0' },
     });
   });
 
@@ -168,7 +169,7 @@ describe('worker routing', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('https://opencode.ai/zen/v1/models', {
       method: 'GET',
-      headers: { Authorization: `Bearer ${key}` },
+      headers: { Authorization: `Bearer ${key}`, 'User-Agent': 'opencode-cowork-proxy/2.0' },
     });
   });
 
@@ -339,5 +340,21 @@ describe('worker routing', () => {
 
     await worker.fetch(request);
     expect(capturedBody.model).toBe('qwen3.6-plus');
+  });
+  it('forwards a session id to OpenCode as x-opencode-session', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ id: 'x', choices: [{ message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }], usage: {} }), { status: 200 })
+    );
+    const key = 'a'.repeat(32);
+    const request = new Request('https://proxy.example/go/v1/messages', {
+      method: 'POST',
+      headers: { 'X-Api-Key': key, 'X-Claude-Code-Session-Id': 'sess-123', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'm', max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] }),
+    });
+    await worker.fetch(request);
+    const headers = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers['X-Opencode-Session']).toBe('sess-123');
+    expect(headers['User-Agent']).toBe('opencode-cowork-proxy/2.0');
+    fetchMock.mockRestore();
   });
 });

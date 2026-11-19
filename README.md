@@ -1,6 +1,8 @@
 # OpenCode Cowork Proxy Worker
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cucoleadan/opencode-cowork-proxy)
+> **opencodezen fork.** Deployed as the `opencodezen` Worker. Adds the `X-Opencode-Session` header and a client `User-Agent`, which OpenCode Go now requires from third-party clients (otherwise `MissingSessionID`). Free Zen models only work inside the OpenCode app, so use Go or paid Zen models. To set this up on another machine, see [prompt.md](prompt.md); to test a deployment, run `./test-proxy.sh <worker-url> go <model>`.
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/raphaelmans/opencodezen)
 
 This project lets Claude use OpenCode Go models, and some OpenCode Zen models.
 
