@@ -2,17 +2,17 @@
 # End-to-end check for an opencodezen Worker.
 #
 # Usage:  ./test-proxy.sh <worker-url> <route> <model>
-#   route = opencode     OpenCode app pass-through, Console / Zen  (<worker>/opencode/v1)
-#           opencode-go  OpenCode app pass-through, Go             (<worker>/opencode/go/v1)
+#   route = chat         OpenCode app pass-through, Console / Zen  (<worker>/chat/v1)
+#           chat-go      OpenCode app pass-through, Go             (<worker>/chat/go/v1)
 #           zen | go     Anthropic-format routes for Claude Desktop / Claude Code
-#   defaults: http://127.0.0.1:8787  opencode  gpt-5.4-nano
+#   defaults: http://127.0.0.1:8787  chat  gpt-5.4-nano
 #
 # The key is read from OPENCODE_API_KEY or a hidden prompt, and never printed.
 # Note: free Zen models are refused when proxied (429 "Client IP address is
 # required for free usage"); test with a paid Zen model or a Go model.
 set -u
 BASE="${1:-http://127.0.0.1:8787}"; BASE="${BASE%/}"
-ROUTE="${2:-opencode}"
+ROUTE="${2:-chat}"
 MODEL="${3:-gpt-5.4-nano}"
 SESSION="proxy-test-$(uuidgen 2>/dev/null || date +%s)"
 
@@ -25,11 +25,11 @@ call() { r=$(curl -s -w '\n%{http_code}' "$@"); code=${r##*$'\n'}; body=${r%$'\n
 
 echo "Worker:  $BASE"
 call "$BASE/"
-echo "$body" | grep -q '"/opencode"' && check ok "Worker answers and has the /opencode route" || check bad "Worker info ($code)" "$body"
+echo "$body" | grep -q '"/chat/v1"' && check ok "Worker answers and has the /chat routes" || check bad "Worker info ($code)" "$body"
 
 case "$ROUTE" in
-  opencode|opencode-go)
-    [ "$ROUTE" = opencode ] && URL="$BASE/opencode/v1" || URL="$BASE/opencode/go/v1"
+  chat|chat-go|opencode|opencode-go)
+    case "$ROUTE" in chat|opencode) URL="$BASE/chat/v1" ;; *) URL="$BASE/chat/go/v1" ;; esac
     H=(-H "Authorization: Bearer $OPENCODE_API_KEY" -H "content-type: application/json" -H "x-opencode-session: $SESSION" -H "User-Agent: opencodezen-test-proxy/1.0")
     echo "Route:   $URL (pass-through), model $MODEL"; echo
 
@@ -65,7 +65,7 @@ case "$ROUTE" in
     call "${H[@]}" "$URL/v1/messages" -d "{\"model\":\"$MODEL\",\"max_tokens\":300,\"tools\":[{\"name\":\"get_weather\",\"description\":\"Get weather for a city\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]}}],\"messages\":[{\"role\":\"user\",\"content\":\"What is the weather in Paris? Use the tool.\"}]}"
     echo "$body" | grep -q '"type":"tool_use"' && check ok "tool_use block returned" || check bad "no tool_use block" "$body"
     ;;
-  *) echo "Unknown route '$ROUTE' (use opencode, opencode-go, zen or go)"; exit 2 ;;
+  *) echo "Unknown route '$ROUTE' (use chat, chat-go, zen or go)"; exit 2 ;;
 esac
 
 echo; echo "$pass passed, $fail failed"

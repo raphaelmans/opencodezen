@@ -6,15 +6,22 @@
 
 ## opencodezen: OpenCode through Cloudflare
 
-Live Worker: **https://opencodezen.nameless-hill-af77.workers.dev**
+Live Worker: **https://api.raphaelmansueto.com**
+
+### Domain and naming
+
+- `api.raphaelmansueto.com` is a Workers **custom domain**. The `raphaelmansueto.com` zone's DNS is on Cloudflare (moved from GoDaddy on 2026-11-19). The website itself still runs on Vercel: the apex `A 76.76.21.21` and `www CNAME cname.vercel-dns.com` records are **DNS only** (grey cloud).
+- Public paths are provider-neutral: `/chat/v1` and `/chat/go/v1`. The info page (`GET /`) names no upstream provider.
+- Transitional, to be removed: the old `/opencode/...` paths still work as an alias of `/chat/...`, and the `*.workers.dev` URL is still enabled (`workers_dev = true` in `wrangler.toml`).
+- A brand-new custom domain can have slow TLS handshakes (seconds) for a while, until Cloudflare's certificate is fully rolled out. A Mac may also cache "no such host" for its IPv4 address from before activation. Flush the cache with `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`.
 
 ### How it works
 
-`<worker-url>/opencode/*` is a transparent pass-through to OpenCode's inference endpoints. It keeps the request method, body, streaming responses and OpenCode's own headers (`User-Agent`, `x-opencode-*`, auth). It also forwards the real client IP in `X-Forwarded-For` / `X-Real-IP`. No format translation happens.
+`<worker-url>/chat/*` is a transparent pass-through to OpenCode's inference endpoints. It keeps the request method, body, streaming responses and OpenCode's own headers (`User-Agent`, `x-opencode-*`, auth). It also forwards the real client IP in `X-Forwarded-For` / `X-Real-IP`. No format translation happens.
 
 OpenCode's catalog gives each model family its own upstream: `opencode.ai/inference/[go/]openai/v1`, `…/anthropic/v1` and `…/google/v1beta`. A provider-wide `baseURL` override sends all of them to one URL, so the Worker picks the family from the request's shape:
 
-| Request path (after `/opencode` or `/opencode/go`) | Upstream |
+| Request path (after `/chat` or `/chat/go`) | Upstream |
 |---|---|
 | `/v1/models/<id>:generateContent` or `:streamGenerateContent` (Gemini) | `inference/[go/]google/v1beta/...` |
 | `/v1/messages...` (Claude, Qwen, MiniMax M3) | `inference/[go/]anthropic/v1/...` |
@@ -24,8 +31,8 @@ Without this, Gemini returns `Provider request failed with HTTP 404`: the older 
 
 | OpenCode provider | Sign-in in OpenCode 2.x | Base URL through the Worker |
 |-------------------|-------------------------|-----------------------------|
-| `opencode` (Console / Zen models) | **OpenCode Console** | `<worker-url>/opencode/v1` |
-| `opencode-go` (Go subscription) | **OpenCode Go** | `<worker-url>/opencode/go/v1` |
+| `opencode` (Console / Zen models) | **OpenCode Console** | `<worker-url>/chat/v1` |
+| `opencode-go` (Go subscription) | **OpenCode Go** | `<worker-url>/chat/go/v1` |
 
 OpenCode 2.x has no separate "Zen" sign-in. Zen's pay-as-you-go models come through the **OpenCode Console** sign-in, and the provider id is still `opencode`.
 
@@ -52,8 +59,8 @@ OpenCode 2.x format:
 {
   "$schema": "https://opencode.ai/config.json",
   "providers": {
-    "opencode":    { "settings": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/v1" } },
-    "opencode-go": { "settings": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/go/v1" } }
+    "opencode":    { "settings": { "baseURL": "https://api.raphaelmansueto.com/chat/v1" } },
+    "opencode-go": { "settings": { "baseURL": "https://api.raphaelmansueto.com/chat/go/v1" } }
   }
 }
 ```
@@ -63,7 +70,7 @@ OpenCode 1.x format (2.x still reads it and converts it on load):
 ```json
 {
   "provider": {
-    "opencode": { "options": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/v1" } }
+    "opencode": { "options": { "baseURL": "https://api.raphaelmansueto.com/chat/v1" } }
   }
 }
 ```
@@ -74,10 +81,10 @@ To use a key other than the stored sign-in, add `"apiKey": "{env:OPENCODE_ZEN_KE
 
 | Check | Result |
 |-------|--------|
-| OpenCode requests reach the Worker (`/opencode/v1/chat/completions`, `/responses`) with OpenCode's own `User-Agent` | ✅ |
+| OpenCode requests reach the Worker (`/chat/v1/chat/completions`, `/responses`) with OpenCode's own `User-Agent` | ✅ |
 | Paid Console / Zen models (e.g. `gpt-5.4-nano`) | ✅ 200 |
-| Model lists: `/opencode/v1/models` (Console / Zen), `/opencode/go/v1/models` (Go) | ✅ |
-| Go models in the OpenCode app (`opencode-go` override → `/opencode/go/v1`) | ✅ 200 with an active Go subscription, all three formats: `gemini-4-argon` (Google), `qwen3.8-flash` (Anthropic), `glm-5.3-flash` (OpenAI). Without a subscription: 403 `permission_error`. |
+| Model lists: `/chat/v1/models` (Console / Zen), `/chat/go/v1/models` (Go) | ✅ |
+| Go models in the OpenCode app (`opencode-go` override → `/chat/go/v1`) | ✅ 200 with an active Go subscription, all three formats: `gemini-4-argon` (Google), `qwen3.8-flash` (Anthropic), `glm-5.3-flash` (OpenAI). Without a subscription: 403 `permission_error`. |
 | Console Gemini (`opencode/gemini-4-argon`) | ✅ 200 |
 | **Free Zen models** (`big-pickle`, `*-free`) | ❌ **Refused when proxied**: `429 Client IP address is required for free usage.` |
 
@@ -86,8 +93,8 @@ To use a key other than the stored sign-in, add `"apiKey": "{env:OPENCODE_ZEN_KE
 ### Test a deployment
 
 ```bash
-./test-proxy.sh <worker-url> opencode <paid-zen-model>   # Console / Zen pass-through
-./test-proxy.sh <worker-url> opencode-go <go-model>      # Go pass-through
+./test-proxy.sh <worker-url> chat <paid-zen-model>   # Console / Zen pass-through
+./test-proxy.sh <worker-url> chat-go <go-model>      # Go pass-through
 ./test-proxy.sh <worker-url> go <go-model>               # Anthropic-format route (Claude clients)
 ```
 
@@ -389,7 +396,7 @@ This works with all Go and Zen models.
 
 | Path | Method | Purpose |
 |------|--------|---------|
-| `/opencode/*` | any | **opencodezen:** transparent pass-through to `https://opencode.ai/inference/{openai,anthropic,google}` for the OpenCode app (family picked from the path). |
+| `/chat/*` | any | **opencodezen:** transparent pass-through to `https://opencode.ai/inference/{openai,anthropic,google}` for the OpenCode app (family picked from the path). |
 | `/v1/messages` | POST | Anthropic Messages API. Translates to OpenAI format by default. |
 | `/v1/chat/completions` | POST | OpenAI Chat Completions API. Pass-through by default. |
 | `/v1/models` | GET | Model discovery proxy. |

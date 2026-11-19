@@ -9,11 +9,12 @@ You are setting up this machine so that **the OpenCode app uses its own provider
 ## Facts
 
 - Repo: https://github.com/raphaelmans/opencodezen (fork of `cucoleadan/opencode-cowork-proxy`, MIT).
-- **Live Worker: https://opencodezen.nameless-hill-af77.workers.dev**. It is already deployed, so a new machine does not need to redeploy.
-- `<worker-url>/opencode/*` is a transparent pass-through to OpenCode's inference endpoints (`opencode.ai/inference/[go/]{openai,anthropic,google}`). The Worker picks the family from the request path (Gemini `:streamGenerateContent` → google, `/messages` → anthropic, else openai). It keeps OpenCode's headers and streaming, and forwards the real client IP.
+- **Live Worker: https://api.raphaelmansueto.com**. It is already deployed, so a new machine does not need to redeploy. Public paths are `/chat/v1` and `/chat/go/v1` (the older `/opencode/...` paths are a temporary alias).
+- The domain's DNS is on Cloudflare; the website `raphaelmansueto.com` / `www` runs on Vercel through **DNS only** records. Never proxy or delete those two records.
+- `<worker-url>/chat/*` is a transparent pass-through to OpenCode's inference endpoints (`opencode.ai/inference/[go/]{openai,anthropic,google}`). The Worker picks the family from the request path (Gemini `:streamGenerateContent` → google, `/messages` → anthropic, else openai). It keeps OpenCode's headers and streaming, and forwards the real client IP.
 - OpenCode providers and their base URLs through the Worker:
-  - `opencode` (Console / Zen models; sign-in **OpenCode Console**): `<worker-url>/opencode/v1`
-  - `opencode-go` (Go subscription; sign-in **OpenCode Go**): `<worker-url>/opencode/go/v1`
+  - `opencode` (Console / Zen models; sign-in **OpenCode Console**): `<worker-url>/chat/v1`
+  - `opencode-go` (Go subscription; sign-in **OpenCode Go**): `<worker-url>/chat/go/v1`
 - OpenCode 2.x has **no separate Zen sign-in**. Zen models come through **OpenCode Console**, and the provider id is still `opencode`.
 - The Worker stores no key. OpenCode's own key passes through to opencode.ai only.
 
@@ -29,7 +30,7 @@ You are setting up this machine so that **the OpenCode app uses its own provider
 
 ## Steps
 
-1. **Check the Worker.** Run `curl https://opencodezen.nameless-hill-af77.workers.dev/`. It must return JSON whose `routes` include `/opencode`. If it doesn't answer, tell me; redeploy only if I ask (see "Redeploying").
+1. **Check the Worker.** Run `curl https://api.raphaelmansueto.com/`. It must return JSON whose `routes` include `/chat/v1`. If it doesn't answer, tell me; redeploy only if I ask (see "Redeploying").
 2. **Install OpenCode with mise.**
    - If an older OpenCode exists (`which -a opencode`), show me where it lives and ask before removing it. Remove only the binary and its PATH line (e.g. `~/.opencode/bin` in `~/.zshrc`). Keep `~/.config/opencode`, `~/.local/share/opencode` and plugin folders.
    - `mise use -g opencode@latest`, then open a new shell and confirm with `opencode --version` (2.3.2 or later).
@@ -39,17 +40,17 @@ You are setting up this machine so that **the OpenCode app uses its own provider
    ```json
    {
      "providers": {
-       "opencode":    { "settings": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/v1" } },
-       "opencode-go": { "settings": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/go/v1" } }
+       "opencode":    { "settings": { "baseURL": "https://api.raphaelmansueto.com/chat/v1" } },
+       "opencode-go": { "settings": { "baseURL": "https://api.raphaelmansueto.com/chat/go/v1" } }
      }
    }
    ```
-   That is the 2.x format. If the file already uses the 1.x format (`"provider"` singular, with `"options"`), add `"provider": {"opencode": {"options": {"baseURL": "…/opencode/v1"}}}` instead; 2.x converts it on load. Check that it applies: `opencode debug config` should show the `baseURL` under `opencode`.
+   That is the 2.x format. If the file already uses the 1.x format (`"provider"` singular, with `"options"`), add `"provider": {"opencode": {"options": {"baseURL": "…/chat/v1"}}}` instead; 2.x converts it on load. Check that it applies: `opencode debug config` should show the `baseURL` under `opencode`.
 5. **Verify the traffic goes through the Worker.**
    - In one terminal: `git clone https://github.com/raphaelmans/opencodezen && cd opencodezen && npm ci && npx wrangler tail opencodezen` (needs `npx wrangler login`, which I approve in the browser).
    - In another: `opencode run -m opencode/<paid-model> "Reply with exactly: PROXY OK"`. Ask me before running a paid model; it costs a fraction of a cent.
-   - The tail must show `POST /opencode/v1/...` with an `opencode/...` user agent and status 200. Then do the same with an `opencode-go/<model>` (e.g. `qwen3.8-flash`) if I have Go; expect `POST /opencode/go/v1/...` 200.
-   - Optional, without the app: `./test-proxy.sh https://opencodezen.nameless-hill-af77.workers.dev opencode <paid-model>` (it asks for the key with hidden input).
+   - The tail must show `POST /chat/v1/...` with an `opencode/...` user agent and status 200. Then do the same with an `opencode-go/<model>` (e.g. `qwen3.8-flash`) if I have Go; expect `POST /chat/go/v1/...` 200.
+   - Optional, without the app: `./test-proxy.sh https://api.raphaelmansueto.com chat <paid-model>` (it asks for the key with hidden input).
 6. **Report** what passed, what failed with the exact error text, and the OpenCode version.
 
 ## Redeploying (only if I ask)

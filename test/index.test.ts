@@ -358,9 +358,9 @@ describe('worker routing', () => {
     expect(headers['User-Agent']).toBe('opencode-cowork-proxy/2.0');
     fetchMock.mockRestore();
   });
-  it('passes /opencode/* through to Zen unchanged, keeping client headers', async () => {
+  it('passes /chat/* through to Zen unchanged, keeping client headers', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('data: x\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } }));
-    const request = new Request('https://proxy.example/opencode/v1/responses?x=1', {
+    const request = new Request('https://proxy.example/chat/v1/responses?x=1', {
       method: 'POST',
       headers: { Authorization: 'Bearer k', 'User-Agent': 'opencode/1.18.25', 'x-opencode-session': 's1', 'cf-connecting-ip': '1.2.3.4', 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'big-pickle', input: 'hi' }),
@@ -393,7 +393,7 @@ describe('worker routing', () => {
   });
   it('uses Vercel client IP headers and drops x-vercel-* on pass-through', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
-    const request = new Request('https://proxy.example/opencode/go/v1/chat/completions', {
+    const request = new Request('https://proxy.example/chat/go/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: 'Bearer k', 'x-real-ip': '5.6.7.8', 'x-vercel-id': 'abc', 'Content-Type': 'application/json' },
       body: '{}',
@@ -406,5 +406,19 @@ describe('worker routing', () => {
     expect(h.get('x-vercel-id')).toBeNull();
     expect(init.duplex).toBe('half');
     fetchMock.mockRestore();
+  });
+  it('keeps /opencode as a temporary alias of /chat', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    await worker.fetch(new Request('https://proxy.example/opencode/go/v1/messages', { method: 'POST', headers: { Authorization: 'Bearer k' }, body: '{}' }));
+    expect((fetchMock.mock.calls[0] as [string])[0]).toBe('https://opencode.ai/inference/go/anthropic/v1/messages');
+    fetchMock.mockRestore();
+  });
+
+  it('info page names no upstream provider', async () => {
+    const res = await worker.fetch(new Request('https://proxy.example/'));
+    const text = await res.text();
+    expect(res.status).toBe(200);
+    expect(text).toContain('/chat/v1');
+    expect(text.toLowerCase()).not.toContain('opencode');
   });
 });

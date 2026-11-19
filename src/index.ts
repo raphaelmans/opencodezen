@@ -14,7 +14,8 @@ const VISION_MODEL = "qwen3.6-plus";
 
 const API_START_PATHS = new Set(['v1', 'v2']);
 const ZEN_ORIGIN = "https://opencode.ai/zen";
-const PASSTHROUGH_PREFIX = "/opencode";
+// Public path for the pass-through. "/opencode" is kept only as a temporary alias while clients move over.
+const PASSTHROUGH_PREFIXES = ["/chat", "/opencode"];
 const HOP_HEADERS = new Set([
   "host", "content-length", "connection", "keep-alive", "transfer-encoding",
   "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host", "x-real-ip",
@@ -31,7 +32,7 @@ const INFERENCE_ORIGIN = "https://opencode.ai/inference";
  *   .../models/<id>:<method>   -> google  (Gemini generateContent / streamGenerateContent)
  *   .../messages[...]          -> anthropic
  *   anything else under /v1    -> openai  (chat/completions, responses, models, ...)
- * `rest` is the path after the /opencode prefix, e.g. "/go/v1/messages".
+ * `rest` is the path after the /chat prefix, e.g. "/go/v1/messages".
  */
 export function upstreamFor(rest: string): string {
   const go = rest === "/go" || rest.startsWith("/go/");
@@ -46,16 +47,20 @@ export function upstreamFor(rest: string): string {
 }
 
 /**
- * Transparent pass-through for OpenCode itself: <worker>/opencode/[go/]v1/... is
+ * Transparent pass-through for OpenCode itself: <worker>/chat/[go/]v1/... is
  * forwarded unchanged to the matching https://opencode.ai/inference/... base (see
  * upstreamFor). Method, body, client headers (User-Agent, x-opencode-*, auth) and
  * streaming responses are preserved; no format translation happens. In OpenCode set
- * the `opencode` provider baseURL to <worker>/opencode/v1 and `opencode-go` to
- * <worker>/opencode/go/v1.
+ * the `opencode` provider baseURL to <worker>/chat/v1 and `opencode-go` to
+ * <worker>/chat/go/v1.
  */
 export async function passthrough(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
-  const rest = stripPrefix(url.pathname, PASSTHROUGH_PREFIX);
+  let rest: string | null = null;
+  for (const prefix of PASSTHROUGH_PREFIXES) {
+    rest = stripPrefix(url.pathname, prefix);
+    if (rest !== null) break;
+  }
   if (rest === null) return null;
   const target = `${upstreamFor(rest)}${url.search}`;
   const headers = new Headers();
@@ -286,20 +291,15 @@ async function handleRequest(request: Request): Promise<Response> {
       return new Response(await res.text(), { headers: { "Content-Type": "application/json" } });
   }
 
+  // Deliberately generic: the public info page names no upstream provider.
   return new Response(JSON.stringify({
-    name: "opencode-cowork-proxy",
-    upstream,
+    name: "api",
+    status: "ok",
     routes: {
-      "/opencode": `${INFERENCE_ORIGIN}/{openai,anthropic,google} (transparent pass-through for the OpenCode app)`,
-      "/opencode/v1": "OpenCode `opencode` provider (Console / Zen) baseURL",
-      "/opencode/go/v1": "OpenCode `opencode-go` provider baseURL",
-      "/go": GO_UPSTREAM,
-      "/zen": ZEN_UPSTREAM,
-    },
-    endpoints: {
-      "/v1/messages": "Anthropic → upstream (translated if upstream=openai)",
-      "/v1/chat/completions": "OpenAI → upstream (translated if upstream=anthropic)",
-      "/v1/models": "Model discovery proxy",
+      "/chat/v1": "chat API (pay-as-you-go models)",
+      "/chat/go/v1": "chat API (subscription models)",
+      "/go": "Anthropic-format API (subscription models)",
+      "/zen": "Anthropic-format API (pay-as-you-go models)",
     },
   }, null, 2), {
     headers: { "Content-Type": "application/json" },
