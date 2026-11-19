@@ -357,4 +357,24 @@ describe('worker routing', () => {
     expect(headers['User-Agent']).toBe('opencode-cowork-proxy/2.0');
     fetchMock.mockRestore();
   });
+  it('passes /opencode/* through to Zen unchanged, keeping client headers', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('data: x\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } }));
+    const request = new Request('https://proxy.example/opencode/v1/responses?x=1', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer k', 'User-Agent': 'opencode/1.18.25', 'x-opencode-session': 's1', 'cf-connecting-ip': '1.2.3.4', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'big-pickle', input: 'hi' }),
+    });
+    const res = await worker.fetch(request);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://opencode.ai/zen/v1/responses?x=1');
+    const h = init.headers as Headers;
+    expect(h.get('user-agent')).toBe('opencode/1.18.25');
+    expect(h.get('x-opencode-session')).toBe('s1');
+    expect(h.get('authorization')).toBe('Bearer k');
+    expect(h.get('cf-connecting-ip')).toBeNull();
+    expect(h.get('x-forwarded-for')).toBe('1.2.3.4');
+    expect(h.get('x-real-ip')).toBe('1.2.3.4');
+    expect(res.headers.get('content-type')).toBe('text/event-stream');
+    fetchMock.mockRestore();
+  });
 });

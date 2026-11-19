@@ -13,6 +13,48 @@ const DEFAULT_UPSTREAM = GO_UPSTREAM;
 const VISION_MODEL = "qwen3.6-plus";
 
 const API_START_PATHS = new Set(['v1', 'v2']);
+const ZEN_ORIGIN = "https://opencode.ai/zen";
+const PASSTHROUGH_PREFIX = "/opencode";
+const HOP_HEADERS = new Set([
+  "host", "content-length", "connection", "keep-alive", "transfer-encoding",
+  "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host", "x-real-ip",
+  "true-client-ip", "x-upstream-url", "x-upstream-format",
+]);
+
+/**
+ * Transparent pass-through for OpenCode itself: <worker>/opencode/<path> is
+ * forwarded unchanged to https://opencode.ai/zen/<path>. Method, body,
+ * client headers (User-Agent, x-opencode-*, auth) and streaming responses are
+ * preserved; no format translation happens. Point OpenCode's `opencode`
+ * provider baseURL at <worker>/opencode/v1.
+ */
+export async function passthrough(request: Request): Promise<Response | null> {
+  const url = new URL(request.url);
+  const rest = stripPrefix(url.pathname, PASSTHROUGH_PREFIX);
+  if (rest === null) return null;
+  const target = `${ZEN_ORIGIN}${rest === "/" ? "" : rest}${url.search}`;
+  const headers = new Headers();
+  request.headers.forEach((value, name) => {
+    const n = name.toLowerCase();
+    if (HOP_HEADERS.has(n) || n.startsWith("cf-")) return;
+    headers.set(name, value);
+  });
+  // Zen rate-limits free models per end-user IP ("Client IP address is
+  // required"). Forward the real client IP Cloudflare saw, like any reverse proxy.
+  const clientIp = request.headers.get("cf-connecting-ip");
+  if (clientIp) {
+    headers.set("X-Forwarded-For", clientIp);
+    headers.set("X-Real-IP", clientIp);
+  }
+  const hasBody = !["GET", "HEAD"].includes(request.method);
+  const res = await fetch(target, {
+    method: request.method,
+    headers,
+    body: hasBody ? request.body : undefined,
+    redirect: "manual",
+  });
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
 
 type RouteConfig = {
   path: string;
@@ -102,6 +144,9 @@ function upstreamErrorResponse(res: Response, body: string): Response {
 }
 
 async function handleRequest(request: Request): Promise<Response> {
+  const passed = await passthrough(request);
+  if (passed) return passed;
+
   const route = routeConfig(request);
   const upstream = getUpstream(request, route.upstream);
   const fmt = upstreamFormat(request);
@@ -210,6 +255,7 @@ async function handleRequest(request: Request): Promise<Response> {
     name: "opencode-cowork-proxy",
     upstream,
     routes: {
+      "/opencode": `${ZEN_ORIGIN} (transparent pass-through for the OpenCode app)`,
       "/go": GO_UPSTREAM,
       "/zen": ZEN_UPSTREAM,
     },
