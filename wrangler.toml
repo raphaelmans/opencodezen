@@ -1,3 +1,10 @@
 name = "opencodezen"
 main = "src/index.ts"
 compatibility_date = "2025-05-30"
+# Keep the old *.workers.dev URL until clients move to api.raphaelmansueto.com
+workers_dev = true
+
+# Serve on your own domain (zone must be on this Cloudflare account)
+routes = [
+  { pattern = "api.raphaelmansueto.com", custom_domain = true }
+]

@@ -244,7 +244,7 @@ describe('worker routing', () => {
     });
 
     const response = await worker.fetch(request);
-    const body = await response.json();
+    const body: any = await response.json();
     expect(body.model).toBe('claude-sonnet-4-5-20250514');
   });
 
@@ -390,5 +390,21 @@ describe('worker routing', () => {
     expect(upstreamFor('/go/v1/models/gemini-4-argon:streamGenerateContent')).toBe('https://opencode.ai/inference/go/google/v1beta/models/gemini-4-argon:streamGenerateContent');
     expect(upstreamFor('/go/v1beta/models/gemini-4-argon:generateContent')).toBe('https://opencode.ai/inference/go/google/v1beta/models/gemini-4-argon:generateContent');
     expect(upstreamFor('/something')).toBe('https://opencode.ai/zen/something');
+  });
+  it('uses Vercel client IP headers and drops x-vercel-* on pass-through', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const request = new Request('https://proxy.example/opencode/go/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer k', 'x-real-ip': '5.6.7.8', 'x-vercel-id': 'abc', 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    await worker.fetch(request);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit & { duplex?: string }];
+    expect(url).toBe('https://opencode.ai/inference/go/openai/v1/chat/completions');
+    const h = init.headers as Headers;
+    expect(h.get('x-forwarded-for')).toBe('5.6.7.8');
+    expect(h.get('x-vercel-id')).toBeNull();
+    expect(init.duplex).toBe('half');
+    fetchMock.mockRestore();
   });
 });

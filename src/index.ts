@@ -61,24 +61,34 @@ export async function passthrough(request: Request): Promise<Response | null> {
   const headers = new Headers();
   request.headers.forEach((value, name) => {
     const n = name.toLowerCase();
-    if (HOP_HEADERS.has(n) || n.startsWith("cf-")) return;
+    if (HOP_HEADERS.has(n) || n.startsWith("cf-") || n.startsWith("x-vercel-")) return;
     headers.set(name, value);
   });
   // Zen rate-limits free models per end-user IP ("Client IP address is
   // required"). Forward the real client IP Cloudflare saw, like any reverse proxy.
-  const clientIp = request.headers.get("cf-connecting-ip");
+  // Cloudflare sets cf-connecting-ip; Vercel sets x-real-ip / x-forwarded-for.
+  const clientIp = request.headers.get("cf-connecting-ip")
+    || request.headers.get("x-real-ip")
+    || request.headers.get("x-forwarded-for")?.split(",")[0].trim()
+    || null;
   if (clientIp) {
     headers.set("X-Forwarded-For", clientIp);
     headers.set("X-Real-IP", clientIp);
   }
   const hasBody = !["GET", "HEAD"].includes(request.method);
-  const res = await fetch(target, {
+  const init: RequestInit & { duplex?: "half" } = {
     method: request.method,
     headers,
     body: hasBody ? request.body : undefined,
     redirect: "manual",
-  });
-  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
+  };
+  if (hasBody) init.duplex = "half"; // required by Node's fetch for streamed bodies (Vercel); ignored by Workers
+  const res = await fetch(target, init);
+  // Node's fetch already decoded the body; drop encoding/length so the platform re-frames it correctly.
+  const outHeaders = new Headers(res.headers);
+  outHeaders.delete("content-encoding");
+  outHeaders.delete("content-length");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: outHeaders });
 }
 
 type RouteConfig = {
@@ -183,7 +193,7 @@ async function handleRequest(request: Request): Promise<Response> {
       if (err) return authErrorResponse(err);
 
       if (fmt === "openai") {
-        const req = await request.json();
+        const req: any = await request.json();
         const originalModel = req.model;
         if (route.modelOverride) req.model = route.modelOverride;
         if (hasImages(req)) {
@@ -228,7 +238,7 @@ async function handleRequest(request: Request): Promise<Response> {
       if (err) return authErrorResponse(err);
 
       if (fmt === "anthropic") {
-        const req = await request.json();
+        const req: any = await request.json();
         const anthReq = formatOpenAIToAnthropic(req);
         const res = await fetch(`${upstream}/v1/messages`, {
           method: "POST",
@@ -266,7 +276,7 @@ async function handleRequest(request: Request): Promise<Response> {
       const res = fmt === "anthropic"
         ? await fetch(`${upstream}/v1/models`, {
             method: "GET",
-            headers: anthropicHeaders(request, key),
+            headers: anthropicHeaders(request, key!),
           })
         : await fetch(`${upstream}/models`, {
             method: "GET",
