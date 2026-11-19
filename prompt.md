@@ -24,7 +24,7 @@ You are setting up **opencodezen**, a Cloudflare Worker that lets Anthropic-form
 
 ## Steps
 
-1. **Prerequisites.** Confirm Node.js ≥ 20 and git. Check whether the live Worker answers (`curl https://opencodezen.nameless-hill-af77.workers.dev/`). If it does, skip to step 4; only redeploy if I ask or it is gone.
+1. **Prerequisites.** Confirm Node.js ≥ 20 and git. Check whether the live Worker answers (`curl https://opencodezen.nameless-hill-af77.workers.dev/`). If it does, still do step 2 (you need `test-proxy.sh`) but skip step 3; only redeploy if I ask or it is gone.
 2. **Get the code and test it.**
    ```bash
    git clone https://github.com/raphaelmans/opencodezen && cd opencodezen
