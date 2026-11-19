@@ -45,7 +45,7 @@ opencode auth login           # choose OpenCode Console (and/or OpenCode Go), pa
 
 The first launch of 2.x can take about a minute while plugins install. Until then you may see `Location plugins did not finish activating`.
 
-OpenCode 2.x runs a background service that keeps the config it loaded. After editing the config, quit OpenCode completely (or use `opencode run --standalone …` for a one-off check).
+OpenCode 2.x runs a background service that keeps the config it loaded. After editing the config, run `opencode reload` (or `opencode run --standalone …` for a one-off check). Symptom of a stale service: `Provider request failed with HTTP 404` whose body is this Worker's info page (`{"name": "api", "status": "ok", …}`), meaning OpenCode is still calling an old path.
 
 If you see `Reconnect OpenCode Console to continue`, the Console rejected the saved key. The key list only shows the start of each key; the full key appears once, at creation. Sign in again with the browser option, or paste a freshly created key.
 

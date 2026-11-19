@@ -24,7 +24,7 @@ You are setting up this machine so that **the OpenCode app uses its own provider
 - ❌ **Free Zen models (`big-pickle`, `*-free`) are refused when proxied**: `429 Client IP address is required for free usage.` Zen takes the user's IP from Cloudflare's edge, and a Worker hides it. This is intentional; **do not try to work around it.** For free models, remove the `baseURL` override.
 - ✅ Go through the Worker works in the app with an active Go subscription, in all three API formats (verified: `gemini-4-argon`, `qwen3.8-flash`, `glm-5.3-flash`). Console Gemini works too. Without a subscription Go answers 403.
 - If a model fails with `Provider request failed with HTTP 404`, check the Worker log path: a new API family may need a rule in `upstreamFor` (src/index.ts).
-- OpenCode 2.x keeps loaded config in a background service: after editing config, quit OpenCode fully, or check with `opencode run --standalone -m <model> "…"`.
+- OpenCode 2.x keeps loaded config in a background service: after editing config, run `opencode reload` (or check with `opencode run --standalone -m <model> "…"`). An HTTP 404 whose body is `{"name": "api", "status": "ok", …}` means a stale service still calling an old path.
 - `Reconnect OpenCode Console to continue` means the Console rejected the saved key (often a shortened key copied from the key list). Sign in with the browser option, or paste a freshly created key.
 - "This API key has expired" means: create a new key in the OpenCode Console and run `opencode auth login` again. Signing in again with the old key does not renew it.
 
