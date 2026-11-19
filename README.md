@@ -28,6 +28,10 @@ opencode auth login           # choose OpenCode Console (and/or OpenCode Go), pa
 
 The first launch of 2.x can take about a minute while plugins install. Until then you may see `Location plugins did not finish activating`.
 
+OpenCode 2.x runs a background service that keeps the config it loaded. After editing the config, quit OpenCode completely (or use `opencode run --standalone …` for a one-off check).
+
+If you see `Reconnect OpenCode Console to continue`, the Console rejected the saved key. The key list only shows the start of each key; the full key appears once, at creation. Sign in again with the browser option, or paste a freshly created key.
+
 ### Point OpenCode at the Worker
 
 Global (`~/.config/opencode/opencode.json`) or per project (`opencode.json`).
@@ -63,7 +67,7 @@ To use a key other than the stored sign-in, add `"apiKey": "{env:OPENCODE_ZEN_KE
 | OpenCode requests reach the Worker (`/opencode/v1/chat/completions`, `/responses`) with OpenCode's own `User-Agent` | ✅ |
 | Paid Console / Zen models (e.g. `gpt-5.4-nano`) | ✅ 200 |
 | Model lists: `/opencode/v1/models` (Console / Zen), `/opencode/go/v1/models` (Go) | ✅ |
-| Go models via `/opencode/go/v1` | Reach Go. They need an active Go subscription (otherwise 403 `permission_error`). The `opencode-go` `baseURL` override inside the OpenCode app has not been exercised yet. |
+| Go models in the OpenCode app (`opencode-go` override → `/opencode/go/v1`) | ✅ 200 with an active Go subscription (verified with `qwen3.8-flash`: `/messages` and `/responses` both went through the Worker). Without a subscription: 403 `permission_error`. |
 | **Free Zen models** (`big-pickle`, `*-free`) | ❌ **Refused when proxied**: `429 Client IP address is required for free usage.` |
 
 **Free models need OpenCode connecting directly.** Zen takes the user's IP from Cloudflare's edge. A Worker's subrequest hides it, and `X-Forwarded-For` is not trusted for free usage. This is intentional on OpenCode's side, so don't try to work around it. To use free models, remove the `baseURL` override.

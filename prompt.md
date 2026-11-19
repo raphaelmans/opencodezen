@@ -21,7 +21,9 @@ You are setting up this machine so that **the OpenCode app uses its own provider
 
 - ✅ OpenCode requests reach the Worker with OpenCode's own `User-Agent`. Paid Console / Zen models (e.g. `gpt-5.4-nano`) return 200.
 - ❌ **Free Zen models (`big-pickle`, `*-free`) are refused when proxied**: `429 Client IP address is required for free usage.` Zen takes the user's IP from Cloudflare's edge, and a Worker hides it. This is intentional; **do not try to work around it.** For free models, remove the `baseURL` override.
-- Go models need an active OpenCode Go subscription (otherwise 403). The `opencode-go` `baseURL` override inside the app has not been exercised yet; verify it in step 5 if I have Go.
+- ✅ Go through the Worker works in the app with an active Go subscription (verified with `opencode-go/qwen3.8-flash`). Without a subscription Go answers 403.
+- OpenCode 2.x keeps loaded config in a background service: after editing config, quit OpenCode fully, or check with `opencode run --standalone -m <model> "…"`.
+- `Reconnect OpenCode Console to continue` means the Console rejected the saved key (often a shortened key copied from the key list). Sign in with the browser option, or paste a freshly created key.
 - "This API key has expired" means: create a new key in the OpenCode Console and run `opencode auth login` again. Signing in again with the old key does not renew it.
 
 ## Steps
@@ -45,7 +47,7 @@ You are setting up this machine so that **the OpenCode app uses its own provider
 5. **Verify the traffic goes through the Worker.**
    - In one terminal: `git clone https://github.com/raphaelmans/opencodezen && cd opencodezen && npm ci && npx wrangler tail opencodezen` (needs `npx wrangler login`, which I approve in the browser).
    - In another: `opencode run -m opencode/<paid-model> "Reply with exactly: PROXY OK"`. Ask me before running a paid model; it costs a fraction of a cent.
-   - The tail must show `POST /opencode/v1/...` with an `opencode/...` user agent and status 200. Then do the same with an `opencode-go/<model>` if I have Go.
+   - The tail must show `POST /opencode/v1/...` with an `opencode/...` user agent and status 200. Then do the same with an `opencode-go/<model>` (e.g. `qwen3.8-flash`) if I have Go; expect `POST /opencode/go/v1/...` 200.
    - Optional, without the app: `./test-proxy.sh https://opencodezen.nameless-hill-af77.workers.dev opencode <paid-model>` (it asks for the key with hidden input).
 6. **Report** what passed, what failed with the exact error text, and the OpenCode version.
 
