@@ -1,8 +1,91 @@
-# OpenCode Cowork Proxy Worker
+# opencodezen
 
-> **opencodezen fork.** Deployed as the `opencodezen` Worker. Adds a transparent `/opencode/*` → `https://opencode.ai/zen/*` route so the OpenCode app can use its Zen provider through Cloudflare (set `provider.opencode.options.baseURL` to `<worker-url>/opencode/v1`); paid Zen models work, free ones are refused by Zen when proxied. Adds the `X-Opencode-Session` header and a client `User-Agent`, which OpenCode Go now requires from third-party clients (otherwise `MissingSessionID`). Free Zen models only work inside the OpenCode app, so use Go or paid Zen models. To set this up on another machine, see [prompt.md](prompt.md); to test a deployment, run `./test-proxy.sh <worker-url> go <model>`.
+> **This is opencodezen**, a fork of [cucoleadan/opencode-cowork-proxy](https://github.com/cucoleadan/opencode-cowork-proxy). Its main job: **run the OpenCode app's own providers (OpenCode Console / Zen, and OpenCode Go) through Cloudflare.** The original Anthropic-format routes for Claude Desktop / Claude Code are kept. See [opencodezen: OpenCode through Cloudflare](#opencodezen-opencode-through-cloudflare) below, and [prompt.md](prompt.md) to hand the setup to an agent on another machine.
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/raphaelmans/opencodezen)
+
+## opencodezen: OpenCode through Cloudflare
+
+Live Worker: **https://opencodezen.nameless-hill-af77.workers.dev**
+
+### How it works
+
+`<worker-url>/opencode/*` is a transparent pass-through to `https://opencode.ai/zen/*`. It keeps the request method, body, streaming responses and OpenCode's own headers (`User-Agent`, `x-opencode-*`, auth). It also forwards the real client IP in `X-Forwarded-For` / `X-Real-IP`. No format translation happens, so every endpoint OpenCode uses (`/chat/completions`, `/responses`, `/messages`, `/models`) works.
+
+| OpenCode provider | Sign-in in OpenCode 2.x | Base URL through the Worker |
+|-------------------|-------------------------|-----------------------------|
+| `opencode` (Console / Zen models) | **OpenCode Console** | `<worker-url>/opencode/v1` |
+| `opencode-go` (Go subscription) | **OpenCode Go** | `<worker-url>/opencode/go/v1` |
+
+OpenCode 2.x has no separate "Zen" sign-in. Zen's pay-as-you-go models come through the **OpenCode Console** sign-in, and the provider id is still `opencode`.
+
+### Install OpenCode (mise)
+
+```bash
+mise use -g opencode@latest   # verified with 2.3.2
+opencode auth login           # choose OpenCode Console (and/or OpenCode Go), paste an API key from opencode.ai/console
+```
+
+The first launch of 2.x can take about a minute while plugins install. Until then you may see `Location plugins did not finish activating`.
+
+### Point OpenCode at the Worker
+
+Global (`~/.config/opencode/opencode.json`) or per project (`opencode.json`).
+
+OpenCode 2.x format:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "providers": {
+    "opencode":    { "settings": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/v1" } },
+    "opencode-go": { "settings": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/go/v1" } }
+  }
+}
+```
+
+OpenCode 1.x format (2.x still reads it and converts it on load):
+
+```json
+{
+  "provider": {
+    "opencode": { "options": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/v1" } }
+  }
+}
+```
+
+To use a key other than the stored sign-in, add `"apiKey": "{env:OPENCODE_ZEN_KEY}"` next to `baseURL` and export that variable.
+
+### What works (verified 2026-11-19, OpenCode 1.18.25 and 2.3.2)
+
+| Check | Result |
+|-------|--------|
+| OpenCode requests reach the Worker (`/opencode/v1/chat/completions`, `/responses`) with OpenCode's own `User-Agent` | ✅ |
+| Paid Console / Zen models (e.g. `gpt-5.4-nano`) | ✅ 200 |
+| Model lists: `/opencode/v1/models` (Console / Zen), `/opencode/go/v1/models` (Go) | ✅ |
+| Go models via `/opencode/go/v1` | Reach Go. They need an active Go subscription (otherwise 403 `permission_error`). The `opencode-go` `baseURL` override inside the OpenCode app has not been exercised yet. |
+| **Free Zen models** (`big-pickle`, `*-free`) | ❌ **Refused when proxied**: `429 Client IP address is required for free usage.` |
+
+**Free models need OpenCode connecting directly.** Zen takes the user's IP from Cloudflare's edge. A Worker's subrequest hides it, and `X-Forwarded-For` is not trusted for free usage. This is intentional on OpenCode's side, so don't try to work around it. To use free models, remove the `baseURL` override.
+
+### Test a deployment
+
+```bash
+./test-proxy.sh <worker-url> opencode <paid-zen-model>   # Console / Zen pass-through
+./test-proxy.sh <worker-url> opencode-go <go-model>      # Go pass-through
+./test-proxy.sh <worker-url> go <go-model>               # Anthropic-format route (Claude clients)
+```
+
+The script asks for your key with hidden input and never prints it. To watch live traffic, run `npx wrangler tail opencodezen`.
+
+### Other changes in this fork
+
+- The Anthropic-format routes (`/go`, `/zen`) send `X-Opencode-Session` (taken from the client's `X-Opencode-Session`, `X-Claude-Code-Session-Id` or `X-Session-Id`) and a `User-Agent`. OpenCode Go requires both from third-party clients; without them it returns `MissingSessionID`.
+- The Worker is named `opencodezen` in `wrangler.toml`.
+
+## Original project: Claude Desktop / Claude Code
+
+> The sections below are from upstream and describe the original Claude Desktop / Claude Code setup. Their free-model tables are out of date: free Zen models no longer work through any proxy.
 
 This project lets Claude use OpenCode Go models, and some OpenCode Zen models.
 
@@ -291,6 +374,7 @@ This works with all Go and Zen models.
 
 | Path | Method | Purpose |
 |------|--------|---------|
+| `/opencode/*` | any | **opencodezen:** transparent pass-through to `https://opencode.ai/zen/*` for the OpenCode app. |
 | `/v1/messages` | POST | Anthropic Messages API. Translates to OpenAI format by default. |
 | `/v1/chat/completions` | POST | OpenAI Chat Completions API. Pass-through by default. |
 | `/v1/models` | GET | Model discovery proxy. |

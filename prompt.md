@@ -1,61 +1,73 @@
-# Handover prompt: set up opencodezen on this machine
+# Handover prompt: set up OpenCode through opencodezen on this machine
 
 Paste everything below the line into a coding agent (Claude Code, OpenCode, Codex…) on the new machine.
 
 ---
 
-You are setting up **opencodezen**, a Cloudflare Worker that proxies OpenCode Zen. Main use: the **OpenCode app itself uses its `opencode` (Zen) provider, routed through this Worker**. It also lets Anthropic-format clients (Claude Desktop / Cowork, Claude Code) reach OpenCode models. Work step by step and stop to ask me whenever a step needs my sign-in, approval, or a secret.
+You are setting up this machine so that **the OpenCode app uses its own providers (OpenCode Console / Zen, and OpenCode Go) through a Cloudflare Worker called opencodezen**. Work step by step. Stop and ask me whenever a step needs my sign-in, approval, a secret, or a change to app settings.
 
 ## Facts
 
 - Repo: https://github.com/raphaelmans/opencodezen (fork of `cucoleadan/opencode-cowork-proxy`, MIT).
-- Worker name: `opencodezen` (set in `wrangler.toml`).
-- **Live Worker URL: https://opencodezen.nameless-hill-af77.workers.dev** (deployed 2026-11-19). Use it as `<worker-url>`; a new machine does not need to redeploy.
-- Routes: `<worker-url>/opencode/*` → `https://opencode.ai/zen/*` **transparent pass-through for the OpenCode app** (keeps OpenCode's headers, request formats and streaming; forwards the real client IP). `<worker-url>/zen` → `https://opencode.ai/zen/v1` (pay-as-you-go Zen models), `<worker-url>/go` → `https://opencode.ai/zen/go/v1` (OpenCode Go subscription).
-- Auth: the client sends its OpenCode API key as `x-api-key`. The Worker stores no key; it forwards it only to opencode.ai.
-- This fork adds what OpenCode Go now requires from third-party clients: a stable `X-Opencode-Session` header (taken from the client's `X-Opencode-Session`, `X-Claude-Code-Session-Id` or `X-Session-Id`) and its own `User-Agent`. Without a session id, Go answers `MissingSessionID`.
+- **Live Worker: https://opencodezen.nameless-hill-af77.workers.dev**. It is already deployed, so a new machine does not need to redeploy.
+- `<worker-url>/opencode/*` is a transparent pass-through to `https://opencode.ai/zen/*`. It keeps OpenCode's headers, request formats and streaming, and forwards the real client IP.
+- OpenCode providers and their base URLs through the Worker:
+  - `opencode` (Console / Zen models; sign-in **OpenCode Console**): `<worker-url>/opencode/v1`
+  - `opencode-go` (Go subscription; sign-in **OpenCode Go**): `<worker-url>/opencode/go/v1`
+- OpenCode 2.x has **no separate Zen sign-in**. Zen models come through **OpenCode Console**, and the provider id is still `opencode`.
+- The Worker stores no key. OpenCode's own key passes through to opencode.ai only.
 
-## Known limits (verified 2026-11-19 against the live Worker)
+## Known limits (verified 2026-11-19 with OpenCode 1.18.25 and 2.3.2)
 
-- **Through `/opencode`, paid Zen models work** (verified: OpenCode's `gpt-5.4-nano` calls returned 200).
-- **Free Zen models do not work through any Cloudflare proxy.** Zen answers `429 Client IP address is required for free usage.` It takes the user's IP from Cloudflare's edge, and a Worker's subrequest hides it (`X-Forwarded-For` is not trusted). This is by design; do not try to work around it. Use free models with OpenCode directly, without the proxy.
-
-- **Free Zen models (`*-free`, `big-pickle`) do not work through this proxy.** OpenCode's docs: free-tier chat models require the OpenCode app; other clients get `FreeUsageLimitError` (429). `minimax-m2.5-free` is retired.
-- **Go models need an active OpenCode Go subscription** (otherwise 403 `permission_error`).
-- Some Go models (e.g. `deepseek-v4.1-flash`) are hosted outside the EU/US and need "Global" enabled under OpenCode console → Settings → Privacy → Regions.
-- Check current model ids with `GET <worker-url>/go/v1/models` or `/zen/v1/models` (send `x-api-key`).
+- ✅ OpenCode requests reach the Worker with OpenCode's own `User-Agent`. Paid Console / Zen models (e.g. `gpt-5.4-nano`) return 200.
+- ❌ **Free Zen models (`big-pickle`, `*-free`) are refused when proxied**: `429 Client IP address is required for free usage.` Zen takes the user's IP from Cloudflare's edge, and a Worker hides it. This is intentional; **do not try to work around it.** For free models, remove the `baseURL` override.
+- Go models need an active OpenCode Go subscription (otherwise 403). The `opencode-go` `baseURL` override inside the app has not been exercised yet; verify it in step 5 if I have Go.
+- "This API key has expired" means: create a new key in the OpenCode Console and run `opencode auth login` again. Signing in again with the old key does not renew it.
 
 ## Steps
 
-1. **Prerequisites.** Confirm Node.js ≥ 20 and git. Check whether the live Worker answers (`curl https://opencodezen.nameless-hill-af77.workers.dev/`). If it does, still do step 2 (you need `test-proxy.sh`) but skip step 3; only redeploy if I ask or it is gone.
-2. **Get the code and test it.**
-   ```bash
-   git clone https://github.com/raphaelmans/opencodezen && cd opencodezen
-   npm ci && npx vitest run
-   ```
-   All tests must pass.
-3. **Deploy.** Run `npx wrangler login` (I approve in the browser), then `npx wrangler deploy`. If Cloudflare asks to register a `workers.dev` subdomain, let me choose it. Note the URL it prints: `https://opencodezen.<subdomain>.workers.dev`.
-4. **Smoke test without a key.** `curl <worker-url>/` must return JSON with `"name": "opencode-cowork-proxy"`, and a POST to `<worker-url>/go/v1/messages` with no key must return a 401 `authentication_error`.
-5. **Full test with my key.** Run `./test-proxy.sh <worker-url> go <model>` (it prompts for the key with hidden input; never echo, log, or commit the key). It checks model listing, a plain reply, streaming, and tool use. If I have no Go subscription, expect 403 and stop there — report it, don't work around it.
-6. **Point a client at it** (only when I say so — this changes the app's settings):
-   - **OpenCode (main use case):** add this to the project's `opencode.json` (or the global `~/.config/opencode/opencode.json` if I ask). OpenCode keeps using its own stored OpenCode key; to use a different key, add `"apiKey": "{env:OPENCODE_ZEN_KEY}"` under `options` and export that variable.
-     ```json
-     {
-       "$schema": "https://opencode.ai/config.json",
-       "provider": {
-         "opencode": {
-           "options": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/v1" }
-         }
-       }
+1. **Check the Worker.** Run `curl https://opencodezen.nameless-hill-af77.workers.dev/`. It must return JSON whose `routes` include `/opencode`. If it doesn't answer, tell me; redeploy only if I ask (see "Redeploying").
+2. **Install OpenCode with mise.**
+   - If an older OpenCode exists (`which -a opencode`), show me where it lives and ask before removing it. Remove only the binary and its PATH line (e.g. `~/.opencode/bin` in `~/.zshrc`). Keep `~/.config/opencode`, `~/.local/share/opencode` and plugin folders.
+   - `mise use -g opencode@latest`, then open a new shell and confirm with `opencode --version` (2.3.2 or later).
+   - The first launch can take about a minute ("Location plugins did not finish activating") while plugins install. Wait and retry.
+3. **Sign in.** Ask me to run `opencode auth login` and choose **OpenCode Console** (and **OpenCode Go** if I subscribe), pasting a fresh key from opencode.ai/console. Never type, print or store the key yourself. Check with `opencode auth list`.
+4. **Point OpenCode at the Worker** (ask first; back up the file before editing). In `~/.config/opencode/opencode.json`, merge this in and keep everything else:
+   ```json
+   {
+     "providers": {
+       "opencode":    { "settings": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/v1" } },
+       "opencode-go": { "settings": { "baseURL": "https://opencodezen.nameless-hill-af77.workers.dev/opencode/go/v1" } }
      }
-     ```
-     Test with a paid Zen model: `opencode run -m opencode/<paid-model> "Reply with exactly: PROXY OK"`, and confirm with `npx wrangler tail opencodezen` that requests hit `/opencode/v1/...`. If OpenCode says "This API key has expired", ask me to create a new key in the OpenCode console and run `opencode auth login`.
-   - **Claude Desktop:** Help → Troubleshooting → Enable Developer Mode, then Developer → Configure Third-Party Inference. Backend `Gateway`, base URL `<worker-url>/go` (or `/zen`), auth scheme `x-api-key`, API key = mine (I type it), model = an id from the list, added to the model list by hand. Apply locally, then fully quit and reopen Claude.
-   - **Claude Code CLI:** `ANTHROPIC_BASE_URL=<worker-url>/go ANTHROPIC_API_KEY=<my key> ANTHROPIC_MODEL=<model> claude`. Claude Code already sends a session header that Go recognises.
-7. **Report** what passed, what failed with the exact error text, and the Worker URL.
+   }
+   ```
+   That is the 2.x format. If the file already uses the 1.x format (`"provider"` singular, with `"options"`), add `"provider": {"opencode": {"options": {"baseURL": "…/opencode/v1"}}}` instead; 2.x converts it on load. Check that it applies: `opencode debug config` should show the `baseURL` under `opencode`.
+5. **Verify the traffic goes through the Worker.**
+   - In one terminal: `git clone https://github.com/raphaelmans/opencodezen && cd opencodezen && npm ci && npx wrangler tail opencodezen` (needs `npx wrangler login`, which I approve in the browser).
+   - In another: `opencode run -m opencode/<paid-model> "Reply with exactly: PROXY OK"`. Ask me before running a paid model; it costs a fraction of a cent.
+   - The tail must show `POST /opencode/v1/...` with an `opencode/...` user agent and status 200. Then do the same with an `opencode-go/<model>` if I have Go.
+   - Optional, without the app: `./test-proxy.sh https://opencodezen.nameless-hill-af77.workers.dev opencode <paid-model>` (it asks for the key with hidden input).
+6. **Report** what passed, what failed with the exact error text, and the OpenCode version.
+
+## Redeploying (only if I ask)
+
+```bash
+cd opencodezen && npm ci && npx vitest run   # all tests must pass
+npx wrangler login && npx wrangler deploy
+```
+
+If Cloudflare says there is no `workers.dev` subdomain, open `https://dash.cloudflare.com/?to=/:account/workers/workers-and-pages` once in the browser; that creates one. Then deploy again. A new subdomain can take a couple of minutes to resolve. If the URL changes, update the `baseURL` values.
+
+## Undo
+
+Remove the `opencode` / `opencode-go` `baseURL` entries (or restore your backup). OpenCode then talks to opencode.ai directly, and free models work again.
+
+## Other clients (optional)
+
+The same Worker also serves Anthropic-format routes for Claude Desktop / Claude Code: `<worker-url>/go` and `<worker-url>/zen`, with auth scheme `x-api-key`. See the README's "Original project" section. Changing Claude Desktop's inference settings restarts it and reroutes all its traffic, so do that only when I say so.
 
 ## Rules
 
-- Never paste my API key into files, commits, or chat output. I enter it myself at prompts.
-- Don't send client code or secrets through free/trial models; they may train on inputs.
-- Ask before anything that costs money, changes account settings, or publishes something.
+- Never put my API key in files, commits, logs or chat. I enter it myself at prompts.
+- Don't send client code or secrets through free or trial models; they may train on inputs.
+- Ask before anything that costs money, changes account or app settings, deletes files, or publishes something.

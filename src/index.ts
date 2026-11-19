@@ -25,8 +25,10 @@ const HOP_HEADERS = new Set([
  * Transparent pass-through for OpenCode itself: <worker>/opencode/<path> is
  * forwarded unchanged to https://opencode.ai/zen/<path>. Method, body,
  * client headers (User-Agent, x-opencode-*, auth) and streaming responses are
- * preserved; no format translation happens. Point OpenCode's `opencode`
- * provider baseURL at <worker>/opencode/v1.
+ * preserved; no format translation happens. In OpenCode set
+ * providers.opencode.settings.baseURL (2.x) / provider.opencode.options.baseURL
+ * (1.x) to <worker>/opencode/v1, and the `opencode-go` provider to
+ * <worker>/opencode/go/v1.
  */
 export async function passthrough(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
@@ -256,6 +258,8 @@ async function handleRequest(request: Request): Promise<Response> {
     upstream,
     routes: {
       "/opencode": `${ZEN_ORIGIN} (transparent pass-through for the OpenCode app)`,
+      "/opencode/v1": "OpenCode `opencode` provider (Console / Zen) baseURL",
+      "/opencode/go/v1": "OpenCode `opencode-go` provider baseURL",
       "/go": GO_UPSTREAM,
       "/zen": ZEN_UPSTREAM,
     },
